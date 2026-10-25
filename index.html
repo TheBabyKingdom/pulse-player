@@ -8,6 +8,11 @@
 </head>
 <body>
 
+  <div id="backdrop" aria-hidden="true">
+    <img id="backImg" alt="">
+    <video id="backVid" muted loop playsinline></video>
+  </div>
+
   <header class="topbar">
     <div class="brand">● Pulse</div>
     <div class="search">
@@ -50,10 +55,7 @@
       </div>
       <div id="plDetail">
         <button id="backToLists" class="ghost">← All playlists</button>
-        <div class="head-row">
-          <h2 id="plName">Playlist</h2>
-          <span id="plCount" class="hint"></span>
-        </div>
+        <div class="head-row"><h2 id="plName">Playlist</h2><span id="plCount" class="hint"></span></div>
         <ul id="plTracks" class="list"></ul>
       </div>
     </section>
@@ -66,12 +68,8 @@
           <button id="openFolder" class="ghost">Open music folder</button>
         </div>
       </div>
-      <p class="hint">
-        Files you add are <b>copied into the app's own folder</b>, so moving or renaming the original
-        later won't break your library. Your original file is never modified. Removing a song here
-        deletes only the app's copy.
-      </p>
-      <p class="hint">Supported: MP3, M4A, AAC, WAV, OGG, FLAC, OPUS.</p>
+      <p class="hint">Files are <b>copied into the app's own folder</b>, so moving the original later won't break your library. Your original is never modified. Supported: MP3, M4A, AAC, WAV, OGG, FLAC and OPUS.</p>
+      <p id="localNote" class="hint"></p>
       <ul id="localList" class="list"></ul>
     </section>
 
@@ -95,16 +93,8 @@
       <div class="btns" style="margin:0 0 18px">
         <button id="pickFiles2">Add MP3s from this PC</button>
       </div>
-      <p class="hint">
-        Paste a playlist link on its own line — a YouTube playlist
-        (<code>youtube.com/playlist?list=…</code>), a SoundCloud set
-        (<code>soundcloud.com/artist/sets/…</code>) or a public Spotify playlist
-        (<code>open.spotify.com/playlist/…</code>). You can also paste many song links, one per line,
-        or the names of songs.
-      </p>
-      <label class="row-label">Import into
-        <select id="importTarget"></select>
-      </label>
+      <p class="hint">Paste a playlist link on its own line — a YouTube playlist (<code>youtube.com/playlist?list=…</code>), a SoundCloud set (<code>soundcloud.com/artist/sets/…</code>) or a public Spotify playlist (<code>open.spotify.com/playlist/…</code>). You can also paste many song links, one per line, or the names of songs.</p>
+      <label class="row-label">Import into <select id="importTarget"></select></label>
       <textarea id="pasteBox" rows="9" placeholder="https://www.youtube.com/playlist?list=...
 https://open.spotify.com/playlist/...
 https://www.youtube.com/watch?v=...
@@ -117,15 +107,8 @@ Artist - Song title"></textarea>
       <p id="importNote" class="hint"></p>
 
       <h4>Check which songs play</h4>
-      <p class="hint">
-        YouTube does not publish which videos block playback in other apps, so the only way to know
-        is to try each one. This plays every YouTube song in your queue silently for a few seconds
-        and marks the ones that refuse. It takes a while on a long queue, and you'll hear nothing
-        while it runs.
-      </p>
-      <div class="btns">
-        <button id="verifyGo" class="ghost">Check my queue</button>
-      </div>
+      <p class="hint">YouTube does not publish which videos block playback in other apps, so the only way to know is to try each one. This plays every YouTube song in your queue silently for a few seconds and marks the ones that refuse.</p>
+      <div class="btns"><button id="verifyGo" class="ghost">Check my queue</button></div>
       <p id="verifyNote" class="hint"></p>
     </section>
 
@@ -144,7 +127,7 @@ Artist - Song title"></textarea>
       <label>Text <input type="color" data-var="--text"></label>
       <label>Secondary text <input type="color" data-var="--muted"></label>
 
-      <h4>Shape &amp; type</h4>
+      <h4>Shape, type and layout</h4>
       <label>Corner roundness <input type="range" min="0" max="32" data-var="--radius" data-unit="px"></label>
       <label>Spacing <input type="range" min="6" max="28" data-var="--gap" data-unit="px"></label>
       <label>Font
@@ -157,16 +140,43 @@ Artist - Song title"></textarea>
           <option value="'Courier New', monospace">Monospace</option>
         </select>
       </label>
-
-      <h4>Layout</h4>
+      <label>Sidebar width <input type="range" min="60" max="140" id="setRail"><span id="railOut" class="val"></span></label>
+      <label>Row height <input type="range" min="2" max="20" id="setRow"><span id="rowOut" class="val"></span></label>
+      <label>Artwork rounding <input type="range" min="0" max="30" id="setArt"><span id="artOut" class="val"></span></label>
+      <label>Panel opacity <input type="range" min="0.35" max="1" step="0.01" id="setAlpha"><span id="alphaOut" class="val"></span></label>
       <label>Show now-playing panel <input type="checkbox" id="optNow"></label>
       <label>Compact song rows <input type="checkbox" id="optCompact"></label>
       <label>Hide songs that won't play <input type="checkbox" id="optHideBroken"></label>
 
+      <h4>Background image, GIF or video</h4>
+      <p class="hint">Pick a picture, a GIF or a video file and it sits behind the panels. Panels become see-through — use <b>Panel opacity</b> above to control how much.</p>
+      <div class="btns">
+        <button id="pickBack">Choose a file from this PC</button>
+        <button id="openBackFolder" class="ghost">Open background folder</button>
+        <button id="backClear" class="ghost danger">Clear background</button>
+      </div>
+      <div id="backList" class="back-grid"></div>
+      <label class="row-label">…or paste an image / GIF URL
+        <input id="backUrl" type="text" placeholder="https://…">
+      </label>
+      <label>Background opacity <input type="range" min="0" max="1" step="0.01" id="setOpacity"><span id="opacityOut" class="val"></span></label>
+      <label>Blur <input type="range" min="0" max="40" id="setBlur"><span id="blurOut" class="val"></span></label>
+      <label>Darken <input type="range" min="0" max="0.9" step="0.01" id="setDark"><span id="darkOut" class="val"></span></label>
+
+      <h4>Equaliser</h4>
+      <div id="eqWrap">
+        <label class="eq-head">Enable equaliser <input type="checkbox" id="eqOn"></label>
+        <div id="eqPresets" class="presets"></div>
+        <div id="eqBands" class="eq-bands"></div>
+        <div class="btns"><button id="eqReset" class="ghost">Reset to flat</button></div>
+        <p id="eqNote" class="hint"></p>
+        <p class="hint">These filters run on <b>local files you added</b>. YouTube and SoundCloud play through their own embedded players, so their audio never passes through this app and can't be filtered here.</p>
+      </div>
+
       <h4>Search &amp; import keys (optional)</h4>
       <label>YouTube API key <input id="ytKey" type="password" placeholder="Paste key"></label>
       <label>SoundCloud client ID <input id="scKey" type="password" placeholder="Paste ID"></label>
-      <p class="hint">Only needed for searching and for importing playlists. Pasting a single song link always works without any keys. See README for how to get a free YouTube key.</p>
+      <p class="hint">Only needed for searching and importing playlists. Pasting a single song link works without any keys.</p>
 
       <div class="btns">
         <button id="resetTheme" class="ghost">Reset look</button>
@@ -183,7 +193,6 @@ Artist - Song title"></textarea>
       <button id="npFocus" title="Focus mode" data-icon="expand" data-size="17"></button>
       <button id="npClose" title="Hide panel" data-icon="close" data-size="17"></button>
     </div>
-
     <div id="artBox" class="art-box" data-mode="none" data-yt="off" data-stage="video">
       <div class="placeholder" data-icon="lyrics" data-size="46"></div>
       <div id="ytHolder"><div id="ytPlayer"></div></div>
@@ -191,14 +200,11 @@ Artist - Song title"></textarea>
       <div id="localArt" class="local-art" data-icon="disc" data-size="76"></div>
       <div id="lyrics" class="lyrics"></div>
     </div>
-
     <div class="stage-tabs">
       <button id="videoBtn">Video</button>
       <button id="lyricsBtn">Lyrics</button>
     </div>
-
     <input id="lyrSearch" placeholder="Lyrics not right? Search by song name…">
-
     <h3 id="npTitle">Nothing playing</h3>
     <p id="npArtist"></p>
   </aside>
