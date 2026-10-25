@@ -12,7 +12,7 @@
     <div class="brand">● Pulse</div>
     <div class="search">
       <span class="search-icon">⌕</span>
-      <input id="q" placeholder="Search, or paste a YouTube / YouTube Music / SoundCloud link and press Enter" autocomplete="off">
+      <input id="q" placeholder="Search, or paste a song / playlist link and press Enter" autocomplete="off">
       <button id="clearQ" title="Clear">✕</button>
     </div>
     <div class="sources">
@@ -24,9 +24,11 @@
 
   <nav class="rail">
     <button data-view="search" class="active" title="Search">⌕</button>
+    <button data-view="lists" title="Playlists">☰<span class="badge" id="bLists">0</span></button>
     <button data-view="liked" title="Liked songs">♡<span class="badge" id="bLiked">0</span></button>
     <button data-view="recent" title="Recently played">◷</button>
     <button data-view="queue" title="Queue">≡<span class="badge" id="bQueue">0</span></button>
+    <button data-view="import" title="Import &amp; export">⇪</button>
     <hr>
     <button data-view="settings" title="Customise">⚙</button>
   </nav>
@@ -37,6 +39,21 @@
       <h2 id="topHead">Top results</h2>
       <div id="tiles" class="tiles"></div>
       <ul id="results" class="list"></ul>
+    </section>
+
+    <section id="view-lists" class="view">
+      <div id="plIndex">
+        <div class="head-row"><h2>Your playlists</h2><button id="newList">New playlist</button></div>
+        <div id="plGrid" class="pl-grid"></div>
+      </div>
+      <div id="plDetail">
+        <button id="backToLists" class="ghost">← All playlists</button>
+        <div class="head-row">
+          <h2 id="plName">Playlist</h2>
+          <span id="plCount" class="hint"></span>
+        </div>
+        <ul id="plTracks" class="list"></ul>
+      </div>
     </section>
 
     <section id="view-liked" class="view">
@@ -52,6 +69,35 @@
     <section id="view-queue" class="view">
       <div class="head-row"><h2>Queue</h2><button id="clearQueue" class="ghost">Clear queue</button></div>
       <ul id="queueList" class="list"></ul>
+    </section>
+
+    <section id="view-import" class="view">
+      <h2>Import &amp; export</h2>
+      <p class="hint">
+        Paste a playlist link on its own line — a YouTube playlist
+        (<code>youtube.com/playlist?list=…</code>), a SoundCloud set
+        (<code>soundcloud.com/artist/sets/…</code>) or a public Spotify playlist
+        (<code>open.spotify.com/playlist/…</code>). You can also paste many song links, one per line,
+        or the names of songs.
+      </p>
+      <label class="row-label">Import into
+        <select id="importTarget"></select>
+      </label>
+      <textarea id="pasteBox" rows="9" placeholder="https://www.youtube.com/playlist?list=...
+https://open.spotify.com/playlist/...
+https://www.youtube.com/watch?v=...
+Artist - Song title"></textarea>
+      <div class="btns">
+        <button id="importGo">Import</button>
+        <label class="ghost file-btn">Open a .txt file<input id="importFile" type="file" accept=".txt,text/plain" hidden></label>
+        <button id="exportQueue" class="ghost">Save as .txt</button>
+      </div>
+      <p id="importNote" class="hint"></p>
+      <p class="hint">
+        YouTube playlists and Spotify imports need your free API key; SoundCloud sets need your client ID.
+        Both are in Customise ⚙. Spotify's own catalogue can't be streamed by other apps, so Spotify
+        playlists are matched to YouTube versions of each song.
+      </p>
     </section>
 
     <section id="view-settings" class="view settings">
@@ -87,10 +133,10 @@
       <label>Show now-playing panel <input type="checkbox" id="optNow"></label>
       <label>Compact song rows <input type="checkbox" id="optCompact"></label>
 
-      <h4>Search keys (optional)</h4>
+      <h4>Search &amp; import keys (optional)</h4>
       <label>YouTube API key <input id="ytKey" type="password" placeholder="Paste key"></label>
       <label>SoundCloud client ID <input id="scKey" type="password" placeholder="Paste ID"></label>
-      <p class="hint">You only need these for searching. Pasting a link into the search bar always works without any keys. See README for how to get a free YouTube key.</p>
+      <p class="hint">Only needed for searching and for importing playlists. Pasting a single song link always works without any keys. See README for how to get a free YouTube key.</p>
 
       <div class="btns">
         <button id="resetTheme" class="ghost">Reset look</button>
@@ -102,15 +148,26 @@
   <aside class="now">
     <div class="now-head">
       <button id="npLike" title="Like">♡</button>
+      <button id="npAdd" title="Add to a playlist">＋</button>
       <button id="npQueue" title="Show queue">≡</button>
       <button id="npFocus" title="Focus mode">⤢</button>
       <button id="npClose" title="Hide panel">✕</button>
     </div>
-    <div id="artBox" class="art-box" data-mode="none">
+
+    <div id="artBox" class="art-box" data-mode="none" data-yt="off" data-stage="video">
       <div class="placeholder">♪</div>
       <div id="ytHolder"><div id="ytPlayer"></div></div>
       <iframe id="scFrame" allow="autoplay" title="SoundCloud player"></iframe>
+      <div id="lyrics" class="lyrics"></div>
     </div>
+
+    <div class="stage-tabs">
+      <button id="videoBtn">Video</button>
+      <button id="lyricsBtn">Lyrics</button>
+    </div>
+
+    <input id="lyrSearch" placeholder="Lyrics not right? Search by song name…">
+
     <h3 id="npTitle">Nothing playing</h3>
     <p id="npArtist"></p>
   </aside>
@@ -131,6 +188,7 @@
     </div>
     <div class="p-right">
       <span class="time"><span id="elapsed">0:00</span> / <span id="total">0:00</span></span>
+      <button id="addToPlaylist" class="icon" title="Add current song to a playlist">＋</button>
       <button id="queueBtn" class="icon" title="Queue">≡</button>
       <span class="vol-icon">🔊</span>
       <input id="vol" type="range" min="0" max="100">
