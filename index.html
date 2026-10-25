@@ -11,28 +11,28 @@
   <header class="topbar">
     <div class="brand">● Pulse</div>
     <div class="search">
-      <span class="search-icon">⌕</span>
+      <span class="search-icon" data-icon="search" data-size="18"></span>
       <input id="q" placeholder="Search, or paste a song / playlist link and press Enter" autocomplete="off">
-      <button id="clearQ" title="Clear">✕</button>
+      <button id="clearQ" title="Clear" data-icon="close" data-size="16"></button>
     </div>
     <div class="sources">
-      <button data-src="youtube">▶ YouTube</button>
-      <button data-src="ytmusic">◉ YouTube Music</button>
-      <button data-src="soundcloud">☁ SoundCloud</button>
-      <button data-src="local">💾 This PC</button>
+      <button data-src="youtube">YouTube</button>
+      <button data-src="ytmusic">YouTube Music</button>
+      <button data-src="soundcloud">SoundCloud</button>
+      <button data-src="local">This PC</button>
     </div>
   </header>
 
   <nav class="rail">
-    <button data-view="search" class="active" title="Search">⌕</button>
-    <button data-view="lists" title="Playlists">☰<span class="badge" id="bLists">0</span></button>
-    <button data-view="local" title="Local files">💾<span class="badge" id="bLocal">0</span></button>
-    <button data-view="liked" title="Liked songs">♡<span class="badge" id="bLiked">0</span></button>
-    <button data-view="recent" title="Recently played">◷</button>
-    <button data-view="queue" title="Queue">≡<span class="badge" id="bQueue">0</span></button>
-    <button data-view="import" title="Import &amp; export">⇪</button>
+    <button data-view="search" class="active" title="Search" data-icon="search"></button>
+    <button data-view="lists" title="Playlists"><span data-icon="queue"></span><span class="badge" id="bLists">0</span></button>
+    <button data-view="local" title="Local files"><span data-icon="disc"></span><span class="badge" id="bLocal">0</span></button>
+    <button data-view="liked" title="Liked songs"><span data-icon="heart"></span><span class="badge" id="bLiked">0</span></button>
+    <button data-view="recent" title="Recently played" data-icon="clock"></button>
+    <button data-view="queue" title="Queue"><span data-icon="upload"></span><span class="badge" id="bQueue">0</span></button>
+    <button data-view="import" title="Import &amp; export" data-icon="folder"></button>
     <hr>
-    <button data-view="settings" title="Customise">⚙</button>
+    <button data-view="settings" title="Customise" data-icon="gear"></button>
   </nav>
 
   <main class="content">
@@ -115,11 +115,18 @@ Artist - Song title"></textarea>
         <button id="exportQueue" class="ghost">Save as .txt</button>
       </div>
       <p id="importNote" class="hint"></p>
+
+      <h4>Check which songs play</h4>
       <p class="hint">
-        YouTube playlists and Spotify imports need your free API key; SoundCloud sets need your client ID.
-        Both are in Customise ⚙. Spotify's own catalogue can't be streamed by other apps, so Spotify
-        playlists are matched to YouTube versions of each song.
+        YouTube does not publish which videos block playback in other apps, so the only way to know
+        is to try each one. This plays every YouTube song in your queue silently for a few seconds
+        and marks the ones that refuse. It takes a while on a long queue, and you'll hear nothing
+        while it runs.
       </p>
+      <div class="btns">
+        <button id="verifyGo" class="ghost">Check my queue</button>
+      </div>
+      <p id="verifyNote" class="hint"></p>
     </section>
 
     <section id="view-settings" class="view settings">
@@ -154,6 +161,7 @@ Artist - Song title"></textarea>
       <h4>Layout</h4>
       <label>Show now-playing panel <input type="checkbox" id="optNow"></label>
       <label>Compact song rows <input type="checkbox" id="optCompact"></label>
+      <label>Hide songs that won't play <input type="checkbox" id="optHideBroken"></label>
 
       <h4>Search &amp; import keys (optional)</h4>
       <label>YouTube API key <input id="ytKey" type="password" placeholder="Paste key"></label>
@@ -169,18 +177,18 @@ Artist - Song title"></textarea>
 
   <aside class="now">
     <div class="now-head">
-      <button id="npLike" title="Like">♡</button>
-      <button id="npAdd" title="Add to a playlist">＋</button>
-      <button id="npQueue" title="Show queue">≡</button>
-      <button id="npFocus" title="Focus mode">⤢</button>
-      <button id="npClose" title="Hide panel">✕</button>
+      <button id="npLike" title="Like" data-icon="heart" data-size="17"></button>
+      <button id="npAdd" title="Add to a playlist" data-icon="plus" data-size="17"></button>
+      <button id="npQueue" title="Show queue" data-icon="queue" data-size="17"></button>
+      <button id="npFocus" title="Focus mode" data-icon="expand" data-size="17"></button>
+      <button id="npClose" title="Hide panel" data-icon="close" data-size="17"></button>
     </div>
 
     <div id="artBox" class="art-box" data-mode="none" data-yt="off" data-stage="video">
-      <div class="placeholder">♪</div>
+      <div class="placeholder" data-icon="lyrics" data-size="46"></div>
       <div id="ytHolder"><div id="ytPlayer"></div></div>
       <iframe id="scFrame" allow="autoplay" title="SoundCloud player"></iframe>
-      <div id="localArt" class="local-art">♫</div>
+      <div id="localArt" class="local-art" data-icon="disc" data-size="76"></div>
       <div id="lyrics" class="lyrics"></div>
     </div>
 
@@ -198,28 +206,29 @@ Artist - Song title"></textarea>
   <footer class="player">
     <div id="progress" class="progress"><div id="progressFill"></div></div>
     <div class="p-left">
-      <div id="barArt" class="bar-art">♪</div>
+      <div id="barArt" class="bar-art" data-icon="lyrics" data-size="22"></div>
       <div class="p-meta"><b id="barTitle">Nothing playing</b><small id="barArtist"></small></div>
-      <button id="barLike" class="icon" title="Like">♡</button>
+      <button id="barLike" class="icon" title="Like" data-icon="heart" data-size="19"></button>
     </div>
     <div class="p-center">
-      <button id="shuffleBtn" class="icon" title="Shuffle">⤮</button>
-      <button id="prevBtn" class="icon" title="Previous">⏮</button>
-      <button id="playBtn" title="Play / pause (space)">▶</button>
-      <button id="nextBtn" class="icon" title="Next">⏭</button>
-      <button id="repeatBtn" class="icon" title="Repeat one">↻</button>
+      <button id="shuffleBtn" class="icon" title="Shuffle" data-icon="shuffle" data-size="19"></button>
+      <button id="prevBtn" class="icon" title="Previous" data-icon="prev" data-size="20"></button>
+      <button id="playBtn" title="Play / pause (space)" data-icon="play" data-size="22"></button>
+      <button id="nextBtn" class="icon" title="Next" data-icon="next" data-size="20"></button>
+      <button id="repeatBtn" class="icon" title="Repeat one" data-icon="repeat" data-size="19"></button>
     </div>
     <div class="p-right">
       <span class="time"><span id="elapsed">0:00</span> / <span id="total">0:00</span></span>
-      <button id="addToPlaylist" class="icon" title="Add current song to a playlist">＋</button>
-      <button id="queueBtn" class="icon" title="Queue">≡</button>
-      <span class="vol-icon">🔊</span>
+      <button id="addToPlaylist" class="icon" title="Add current song to a playlist" data-icon="plus" data-size="19"></button>
+      <button id="queueBtn" class="icon" title="Queue" data-icon="queue" data-size="19"></button>
+      <span class="vol-icon" data-icon="disc" data-size="17"></span>
       <input id="vol" type="range" min="0" max="100">
     </div>
   </footer>
 
   <div id="toast"></div>
 
+  <script src="icons.js"></script>
   <script src="renderer.js"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
 </body>

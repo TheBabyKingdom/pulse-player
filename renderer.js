@@ -1,4 +1,4 @@
-// ================= Pulse – app logic (local files build) =================
+// ================= Pulse – app logic (polish build) =================
 const $ = s => document.querySelector(s);
 const store = {
   get: (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } },
@@ -17,20 +17,18 @@ const state = {
   source: store.get('source', 'youtube'),
   volume: store.get('volume', 80),
   current: -1, playing: false, shuffle: false, repeat: false, results: [],
-  failed: [],
+  failed: store.get('failed', []),
   stage: store.get('stage', 'video'),
   lyrics: null, lyricLine: -1, lyricsFor: null,
   playerDead: false
 };
-const save = () => ['queue', 'liked', 'recent', 'playlists', 'openList', 'source', 'volume', 'stage']
+const save = () => ['queue', 'liked', 'recent', 'playlists', 'openList', 'source', 'volume', 'stage', 'failed']
   .forEach(k => store.set(k, state[k]));
 const same = (a, b) => a && b && a.source === b.source && a.id === b.id;
 const keyOf = t => t ? t.source + ':' + t.id : '';
 const isFailed = t => state.failed.includes(keyOf(t));
 const findList = id => state.playlists.find(p => p.id === id);
 const isLocal = t => t && t.source === 'local';
-// Local tracks are named by their copied file name, so they stay unique.
-const localId = file => 'local:' + file;
 
 function toast(msg, ms = 3200) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -66,17 +64,14 @@ async function addLocalFiles() {
   let res;
   try { res = await window.pulse.pickAudio(); }
   catch { return toast('Could not open the file picker.'); }
-
-  if (!res.added.length && !res.skipped.length) return;   // user cancelled
+  if (!res.added.length && !res.skipped.length) return;
 
   let n = 0;
   for (const f of res.added) {
     const clean = f.name.replace(/\.[^.]+$/, '');
     const parts = clean.split(/\s+[-–—]\s+/);
     const t = {
-      source: 'local',
-      id: f.file,
-      file: f.file,
+      source: 'local', id: f.file, file: f.file,
       title: parts.length > 1 ? parts.slice(1).join(' - ').trim() : clean,
       artist: parts.length > 1 ? parts[0].trim() : 'This PC',
       thumb: '', dur: ''
@@ -90,9 +85,7 @@ async function addLocalFiles() {
   toast(n ? `Added ${n} file${n === 1 ? '' : 's'}` : 'Those files are already in your library');
 }
 
-function makeLocalUrl(t) {
-  return `/music/${encodeURIComponent(t.file || t.id.replace(/^local:/, ''))}`;
-}
+const makeLocalUrl = t => `/music/${encodeURIComponent(t.file || t.id.replace(/^local:/, ''))}`;
 
 $('#pickFiles').onclick = addLocalFiles;
 $('#openFolder').onclick = () => window.pulse?.openFolder?.();
@@ -295,6 +288,67 @@ $('#exportQueue').onclick = () => {
   toast('Saved as a text file');
 };
 
+// ---------------- verifying playable tracks ----------------
+// YouTube doesn't publish which videos allow embedding, so the only way to
+// know is to try. This walks the queue and drops tracks that refuse.
+let verifying = false;
+async function verifyAll() {
+  if (verifying) return toast('Already checking');
+  if (!ytReady) return toast('Wait for the player to load first');
+  verifying = true;
+  $('#verifyGo').disabled = true;
+  const before = state.failed.length;
+  let checked = 0;
+  const restore = { queue: state.queue.slice(), current: state.current, playing: false };
+
+  for (const t of state.queue) {
+    if (t.source !== 'youtube') { checked++; continue; }
+    $('#verifyNote').textContent = `Checking ${++checked} of ${state.queue.length}…`;
+    const ok = await testVideo(t);
+    if (!ok && !state.failed.includes(keyOf(t))) state.failed.push(keyOf(t));
+  }
+
+  state.queue = restore.queue;
+  state.current = -1;
+  save(); renderAll();
+  $('#verifyGo').disabled = false;
+  verifying = false;
+  const found = state.failed.length - before;
+  $('#verifyNote').textContent = found
+    ? `Found ${found} song${found === 1 ? '' : 's'} that won't play.`
+    : 'Everything plays.';
+  toast(found ? `${found} broken song${found === 1 ? '' : 's'} marked` : 'Everything plays');
+}
+
+// Plays a video silently for a moment and reports whether YouTube accepted it.
+function testVideo(t) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = ok => {
+      if (done) return;
+      done = true;
+      try { yt.stopVideo(); } catch {}
+      resolve(ok);
+    };
+    const onErr = e => { if (e.data === 100 || e.data === 101 || e.data === 150 || e.data === 5) finish(false); };
+    const onState = e => { if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.CUED) finish(true); };
+    yt.addEventListener('onError', onErr);
+    yt.addEventListener('onStateChange', onState);
+    try { yt.mute(); yt.loadVideoById(t.id); } catch { finish(false); }
+    setTimeout(() => {
+      try { yt.removeEventListener('onError'); yt.removeEventListener('onStateChange'); yt.unMute(); } catch {}
+      finish(!state.failed.includes(keyOf(t)));
+    }, 3500);
+  });
+}
+
+$('#verifyGo').onclick = verifyAll;
+$('#optHideBroken').onchange = e => {
+  layout.hideBroken = e.target.checked;
+  store.set('layout', layout);
+  save(); renderAll();
+};
+
 // ---------------- playlists ----------------
 $('#newList').onclick = () => {
   const name = prompt('Name this playlist');
@@ -449,7 +503,7 @@ function splitTitle(t) {
   title = title.replace(/\b(feat|ft|featuring)\.?\s+[^(\[]+/gi, '').replace(/["']/g, '').trim();
   title = title.replace(/\s{2,}/g, ' ').replace(/\s*[-–—]\s*$/, '').trim();
   artist = artist.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').trim();
-  if (artist === 'This PC') artist = '';       // no artist to match on for local files
+  if (artist === 'This PC') artist = '';
   return { artist, title };
 }
 
@@ -506,9 +560,9 @@ function renderStage() {
 
   const pane = $('#lyrics');
   const L = state.lyrics;
-  if (!L) { pane.innerHTML = '<p class="lyr-empty">Looking for lyrics…</p>'; return; }
+  if (!L) { pane.innerHTML = `<p class="lyr-empty">${svg('clock', 22)} Looking for lyrics…</p>`; return; }
   if (L.missing || !L.lines.length) {
-    pane.innerHTML = '<p class="lyr-empty">No lyrics found for this one.<br><small>Try the search box below.</small></p>';
+    pane.innerHTML = `<p class="lyr-empty">${svg('lyrics', 22)}<br>No lyrics found for this one.<br><small>Try the search box below.</small></p>`;
     return;
   }
   pane.innerHTML =
@@ -563,23 +617,43 @@ $('#lyrSearch').addEventListener('keydown', async e => {
 });
 
 // ---------------- rendering ----------------
-const art = (t, cls = '') => t.thumb ? `<img class="${cls}" src="${esc(t.thumb)}" alt="">` : `<div class="${cls} noart">${isLocal(t) ? '♫' : '♪'}</div>`;
+const art = (t, cls = '') => t.thumb
+  ? `<img class="${cls}" src="${esc(t.thumb)}" alt="">`
+  : `<div class="${cls} noart">${svg(isLocal(t) ? 'disc' : 'lyrics', 20)}</div>`;
 const isLiked = t => state.liked.some(x => same(x, t));
 
+// the filter that hides songs YouTube won't play
+const hideBroken = t => layout.hideBroken && isFailed(t);
+const shown = list => list.filter(t => !hideBroken(t));
+
 function renderList(ul, list, mode) {
-  if (!list.length) { ul.innerHTML = `<li class="empty">Nothing here yet.</li>`; return; }
-  ul.innerHTML = list.map((t, i) => `
-    <li class="track${mode === 'queue' && i === state.current ? ' playing' : ''}${isFailed(t) ? ' failed' : ''}${isLocal(t) ? ' local' : ''}" data-i="${i}">
+  const visible = shown(list);
+  if (!visible.length) {
+    ul.innerHTML = `<li class="empty">Nothing here yet.</li>`;
+    return;
+  }
+  ul.innerHTML = visible.map((t, i) => `
+    <li class="track${mode === 'queue' && same(t, cur()) ? ' playing' : ''}${isFailed(t) ? ' failed' : ''}${isLocal(t) ? ' local' : ''}" data-i="${list.indexOf(t)}">
       <span class="index">${i + 1}</span>${art(t)}
-      <div class="meta"><span class="title">${esc(t.title)}</span><span class="sub">${esc(t.artist)} · ${SRC[t.source]}${isFailed(t) ? " · won't play in apps" : ''}</span></div>
+      <div class="meta">
+        <span class="title">${esc(t.title)}</span>
+        <span class="sub">${esc(t.artist)} · ${SRC[t.source]}${isFailed(t) ? ' · won\\'t play in apps' : ''}</span>
+      </div>
+      <div class="hover-controls">
+        <button data-a="play" class="hc" title="${same(t, cur()) && state.playing ? 'Pause' : 'Play'}">${svg(same(t, cur()) && state.playing ? 'pause' : 'play', 16)}</button>
+        <button data-a="prev" class="hc" title="Back">${svg('prev', 16)}</button>
+        <button data-a="next" class="hc" title="Skip">${svg('next', 16)}</button>
+      </div>
       <div class="acts">
-        <button data-a="like" title="Like">${isLiked(t) ? '♥' : '♡'}</button>
-        <button data-a="topl" title="Add to a playlist">＋</button>
-        ${isLocal(t) ? '<button data-a="delf" title="Remove from app">🗑</button>' : ''}
-        ${mode === 'queue' ? '<button data-a="rm" title="Remove">✕</button>' : '<button data-a="add" title="Add to queue">↑</button>'}
+        <button data-a="like" title="Like">${svg(isLiked(t) ? 'heartOn' : 'heart', 17)}</button>
+        <button data-a="topl" title="Add to a playlist">${svg('plus', 17)}</button>
+        ${isLocal(t) ? `<button data-a="delf" title="Remove from app">${svg('trash', 17)}</button>` : ''}
+        ${mode === 'queue' ? `<button data-a="rm" title="Remove">${svg('close', 17)}</button>`
+                           : `<button data-a="add" title="Add to queue">${svg('upload', 17)}</button>`}
       </div>
       <span class="dur">${esc(t.dur || '')}</span>
     </li>`).join('');
+
   ul.querySelectorAll('li.track').forEach(li => {
     const i = +li.dataset.i, t = list[i];
     li.onclick = e => {
@@ -589,6 +663,12 @@ function renderList(ul, list, mode) {
       if (a === 'delf') return removeLocalTrack(t);
       if (a === 'rm') return removeAt(i);
       if (a === 'add') return addToQueue(t, false);
+      if (a === 'play') {
+        if (mode === 'queue') return same(t, cur()) ? toggle() : play(i);
+        return addToQueue(t, true);
+      }
+      if (a === 'prev') return prev();
+      if (a === 'next') return next();
       mode === 'queue' ? play(i) : addToQueue(t, true);
     };
   });
@@ -608,11 +688,13 @@ function addTrackToPlaylist(t) {
 }
 
 function renderResults() {
-  const top = state.results.slice(0, 5);
+  const list = shown(state.results);
+  const top = list.slice(0, 5);
   $('#topHead').style.display = top.length ? '' : 'none';
   $('#tiles').innerHTML = top.map((t, i) => `<div class="tile" data-i="${i}">${art(t)}<b>${esc(t.title)}</b><small>${esc(t.artist)}${t.year ? ' · ' + t.year : ''}</small></div>`).join('');
   $('#tiles').querySelectorAll('.tile').forEach(el => el.onclick = () => addToQueue(state.results[+el.dataset.i], true));
-  if (state.results.length) renderList($('#results'), state.results, 'results'); else $('#results').innerHTML = '';
+  state.results = list;
+  if (list.length) renderList($('#results'), list, 'results'); else $('#results').innerHTML = '';
 }
 
 function renderPlaylists() {
@@ -632,14 +714,14 @@ function renderPlaylists() {
   }
   grid.innerHTML = state.playlists.map(p => `
     <div class="pl-card" data-id="${p.id}">
-      <div class="pl-art">${p.tracks[0]?.thumb ? `<img src="${esc(p.tracks[0].thumb)}" alt="">` : '♪'}</div>
+      <div class="pl-art">${p.tracks[0]?.thumb ? `<img src="${esc(p.tracks[0].thumb)}" alt="">` : svg('disc', 30)}</div>
       <b>${esc(p.name)}</b>
       <small>${p.tracks.length} song${p.tracks.length === 1 ? '' : 's'}</small>
       <div class="pl-acts">
-        <button data-a="play" title="Play">▶</button>
-        <button data-a="queue" title="Add to queue">↑</button>
-        <button data-a="rename" title="Rename">✎</button>
-        <button data-a="del" title="Delete">✕</button>
+        <button data-a="play" title="Play">${svg('play', 17)}</button>
+        <button data-a="queue" title="Add to queue">${svg('upload', 17)}</button>
+        <button data-a="rename" title="Rename">${svg('edit', 17)}</button>
+        <button data-a="del" title="Delete">${svg('trash', 17)}</button>
       </div>
     </div>`).join('');
   grid.querySelectorAll('.pl-card').forEach(card => {
@@ -668,7 +750,7 @@ function renderAll() {
   $('#bLocal').textContent = localTracks().length;
   $('#localCount').textContent = localTracks().length;
   const liked = isLiked(cur());
-  $('#barLike').textContent = $('#npLike').textContent = liked ? '♥' : '♡';
+  $('#barLike').innerHTML = $('#npLike').innerHTML = svg(liked ? 'heartOn' : 'heart', 19);
   $('#shuffleBtn').classList.toggle('on', state.shuffle);
   $('#repeatBtn').classList.toggle('on', state.repeat);
   $('#importTarget').innerHTML = '<option value="">Queue</option>' +
@@ -737,7 +819,7 @@ setTimeout(() => {
 
 function onPlayerError(code) {
   const t = cur();
-  if (t) { const k = keyOf(t); if (!state.failed.includes(k)) state.failed.push(k); }
+  if (t) { const k = keyOf(t); if (!state.failed.includes(k)) { state.failed.push(k); save(); } }
   const reasons = { 2: 'Bad video id', 5: 'Blocked from apps', 100: 'Video not found', 101: 'Owner blocks playback in apps', 150: 'Owner blocks playback in apps' };
   toast((reasons[code] || 'YouTube refused this video') + ' — skipping', 4000);
   if (++skipGuard > 3) { skipGuard = 0; state.playing = false; updateBtn(); renderAll(); return; }
@@ -757,7 +839,6 @@ function play(i) {
   if (i < 0 || i >= state.queue.length) return;
   const t = state.queue[i];
 
-  // Local audio plays in the app's own <audio> element.
   if (isLocal(t)) {
     stopAll();
     state.current = i;
@@ -772,7 +853,7 @@ function play(i) {
       localEl.addEventListener('timeupdate', () => { scPos = localEl.currentTime || 0; });
       localEl.addEventListener('error', () => {
         const c = cur();
-        if (c) { const k = keyOf(c); if (!state.failed.includes(k)) state.failed.push(k); }
+        if (c) { const k = keyOf(c); if (!state.failed.includes(k)) { state.failed.push(k); save(); } }
         toast('This file could not be played — its format is not supported.', 5000);
         setTimeout(next, 1200);
       });
@@ -830,15 +911,20 @@ function toggle() {
 }
 function next() {
   if (!state.queue.length) return;
-  let n = state.shuffle && state.queue.length > 1
-    ? (state.current + 1 + Math.floor(Math.random() * (state.queue.length - 1))) % state.queue.length
-    : state.current + 1;
-  if (n >= state.queue.length) n = 0;
-  play(n);
+  const order = shown(state.queue).length ? shown(state.queue) : state.queue;
+  if (order.length === 1) return play(state.queue.indexOf(order[0]));
+  let idx = order.indexOf(cur());
+  let n = state.shuffle
+    ? (idx + 1 + Math.floor(Math.random() * (order.length - 1))) % order.length
+    : (idx + 1) % order.length;
+  play(state.queue.indexOf(order[n]));
 }
 function prev() {
   if (position() > 3) return seek(0);
-  play(Math.max(0, state.current - 1));
+  const order = shown(state.queue).length ? shown(state.queue) : state.queue;
+  let idx = order.indexOf(cur());
+  if (idx < 0) idx = 0;
+  play(state.queue.indexOf(order[(idx - 1 + order.length) % order.length]));
 }
 function ended() {
   const now = Date.now();
@@ -876,7 +962,7 @@ setInterval(() => {
 $('#progress').onclick = e => { const r = e.currentTarget.getBoundingClientRect(); seek((e.clientX - r.left) / r.width * duration()); };
 
 function updateBtn() {
-  $('#playBtn').textContent = state.playing ? '❚❚' : '▶';
+  $('#playBtn').innerHTML = svg(state.playing ? 'pause' : 'play', 22);
   $('#barArt').classList.toggle('spin', state.playing);
 }
 function updateNow() {
@@ -885,7 +971,7 @@ function updateNow() {
   $('#npArtist').textContent = $('#barArtist').textContent = t ? t.artist : '';
   const ba = $('#barArt');
   ba.style.backgroundImage = t && t.thumb ? `url("${t.thumb}")` : '';
-  ba.textContent = t && t.thumb ? '' : (isLocal(t) ? '♫' : '♪');
+  ba.innerHTML = t && t.thumb ? '' : svg(isLocal(t) ? 'disc' : 'lyrics', 22);
   document.title = t ? `${t.title} – Pulse` : 'Pulse';
 }
 
@@ -940,7 +1026,7 @@ const PRESETS = {
   Light: { '--bg': '#ececec', '--panel': '#ffffff', '--panel-2': '#e8e8e8', '--text': '#111111', '--muted': '#6b6b6b', '--accent': '#111111', '--accent-text': '#ffffff' }
 };
 let theme = { ...DEFAULT_THEME, ...store.get('theme', {}) };
-let layout = { nowPanel: true, compact: false, ...store.get('layout', {}) };
+let layout = { nowPanel: true, compact: false, hideBroken: false, ...store.get('layout', {}) };
 
 function applyTheme() {
   for (const [k, v] of Object.entries(theme)) document.documentElement.style.setProperty(k, v);
@@ -952,6 +1038,7 @@ function applyTheme() {
   document.body.classList.toggle('compact', layout.compact);
   $('#optNow').checked = layout.nowPanel;
   $('#optCompact').checked = layout.compact;
+  $('#optHideBroken').checked = !!layout.hideBroken;
 }
 document.querySelectorAll('[data-var]').forEach(el => el.oninput = () => {
   theme[el.dataset.var] = el.value + (el.dataset.unit || '');
@@ -967,7 +1054,7 @@ $('#presets').querySelectorAll('button').forEach(b => b.onclick = () => {
 });
 $('#optNow').onchange = e => { layout.nowPanel = e.target.checked; store.set('layout', layout); applyTheme(); };
 $('#optCompact').onchange = e => { layout.compact = e.target.checked; store.set('layout', layout); applyTheme(); };
-$('#resetTheme').onclick = () => { theme = { ...DEFAULT_THEME }; layout = { nowPanel: true, compact: false }; store.set('theme', theme); store.set('layout', layout); applyTheme(); toast('Look reset'); };
+$('#resetTheme').onclick = () => { theme = { ...DEFAULT_THEME }; layout = { nowPanel: true, compact: false, hideBroken: false }; store.set('theme', theme); store.set('layout', layout); applyTheme(); toast('Look reset'); };
 $('#resetData').onclick = () => {
   if (!confirm('Remove your queue, liked songs, playlists and history?')) return;
   stopAll(); Object.assign(state, { queue: [], liked: [], recent: [], playlists: [], openList: '', current: -1, playing: false, failed: [] });
@@ -979,6 +1066,11 @@ ytKey.value = store.get('ytKey', ''); scKey.value = store.get('scKey', '');
 ytKey.onchange = () => { store.set('ytKey', ytKey.value.trim()); toast('YouTube key saved'); };
 scKey.onchange = () => { store.set('scKey', scKey.value.trim()); toast('SoundCloud ID saved'); };
 $('#backToLists').onclick = () => { state.openList = ''; save(); renderAll(); };
+
+// paint every static icon on the page
+document.querySelectorAll('[data-icon]').forEach(el => {
+  el.innerHTML = svg(el.dataset.icon, +el.dataset.size || 20);
+});
 
 applyTheme();
 renderAll();
