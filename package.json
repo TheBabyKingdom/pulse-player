@@ -16,7 +16,7 @@
   "build": {
     "appId": "com.pulse.player",
     "productName": "Pulse",
-    "files": ["main.js", "index.html", "styles.css", "renderer.js", "package.json"],
+    "files": ["main.js", "preload.js", "index.html", "styles.css", "renderer.js", "package.json"],
     "win": { "target": "nsis" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
     "mac": { "target": "dmg", "identity": null },

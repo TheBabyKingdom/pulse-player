@@ -19,12 +19,14 @@
       <button data-src="youtube">▶ YouTube</button>
       <button data-src="ytmusic">◉ YouTube Music</button>
       <button data-src="soundcloud">☁ SoundCloud</button>
+      <button data-src="local">💾 This PC</button>
     </div>
   </header>
 
   <nav class="rail">
     <button data-view="search" class="active" title="Search">⌕</button>
     <button data-view="lists" title="Playlists">☰<span class="badge" id="bLists">0</span></button>
+    <button data-view="local" title="Local files">💾<span class="badge" id="bLocal">0</span></button>
     <button data-view="liked" title="Liked songs">♡<span class="badge" id="bLiked">0</span></button>
     <button data-view="recent" title="Recently played">◷</button>
     <button data-view="queue" title="Queue">≡<span class="badge" id="bQueue">0</span></button>
@@ -56,6 +58,23 @@
       </div>
     </section>
 
+    <section id="view-local" class="view">
+      <div class="head-row">
+        <h2>Local files <span id="localCount" class="hint"></span></h2>
+        <div class="btns" style="margin:0">
+          <button id="pickFiles">Add MP3s from this PC</button>
+          <button id="openFolder" class="ghost">Open music folder</button>
+        </div>
+      </div>
+      <p class="hint">
+        Files you add are <b>copied into the app's own folder</b>, so moving or renaming the original
+        later won't break your library. Your original file is never modified. Removing a song here
+        deletes only the app's copy.
+      </p>
+      <p class="hint">Supported: MP3, M4A, AAC, WAV, OGG, FLAC, OPUS.</p>
+      <ul id="localList" class="list"></ul>
+    </section>
+
     <section id="view-liked" class="view">
       <h2>Liked songs</h2>
       <ul id="likedList" class="list"></ul>
@@ -73,6 +92,9 @@
 
     <section id="view-import" class="view">
       <h2>Import &amp; export</h2>
+      <div class="btns" style="margin:0 0 18px">
+        <button id="pickFiles2">Add MP3s from this PC</button>
+      </div>
       <p class="hint">
         Paste a playlist link on its own line — a YouTube playlist
         (<code>youtube.com/playlist?list=…</code>), a SoundCloud set
@@ -158,6 +180,7 @@ Artist - Song title"></textarea>
       <div class="placeholder">♪</div>
       <div id="ytHolder"><div id="ytPlayer"></div></div>
       <iframe id="scFrame" allow="autoplay" title="SoundCloud player"></iframe>
+      <div id="localArt" class="local-art">♫</div>
       <div id="lyrics" class="lyrics"></div>
     </div>
 

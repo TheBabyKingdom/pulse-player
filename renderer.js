@@ -1,19 +1,19 @@
-// ================= Pulse – app logic (playlists + library build) =================
+// ================= Pulse – app logic (local files build) =================
 const $ = s => document.querySelector(s);
 const store = {
   get: (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } },
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v))
 };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const SRC = { youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud' };
+const SRC = { youtube: 'YouTube', ytmusic: 'YouTube Music', soundcloud: 'SoundCloud', local: 'This PC' };
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 const state = {
   queue: store.get('queue', []),
   liked: store.get('liked', []),
   recent: store.get('recent', []),
-  playlists: store.get('playlists', []),        // [{ id, name, tracks: [] }]
-  openList: store.get('openList', ''),          // '' = library index, else playlist id
+  playlists: store.get('playlists', []),
+  openList: store.get('openList', ''),
   source: store.get('source', 'youtube'),
   volume: store.get('volume', 80),
   current: -1, playing: false, shuffle: false, repeat: false, results: [],
@@ -28,6 +28,9 @@ const same = (a, b) => a && b && a.source === b.source && a.id === b.id;
 const keyOf = t => t ? t.source + ':' + t.id : '';
 const isFailed = t => state.failed.includes(keyOf(t));
 const findList = id => state.playlists.find(p => p.id === id);
+const isLocal = t => t && t.source === 'local';
+// Local tracks are named by their copied file name, so they stay unique.
+const localId = file => 'local:' + file;
 
 function toast(msg, ms = 3200) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -52,6 +55,60 @@ document.querySelectorAll('.sources button').forEach(b => {
     if ($('#q').value.trim()) doSearch();
   };
 });
+
+// ---------------- local files ----------------
+const localTracks = () => state.queue.filter(isLocal);
+
+async function addLocalFiles() {
+  if (!window.pulse) {
+    return toast('Local files need the desktop app — update main.js and preload.js first.', 6000);
+  }
+  let res;
+  try { res = await window.pulse.pickAudio(); }
+  catch { return toast('Could not open the file picker.'); }
+
+  if (!res.added.length && !res.skipped.length) return;   // user cancelled
+
+  let n = 0;
+  for (const f of res.added) {
+    const clean = f.name.replace(/\.[^.]+$/, '');
+    const parts = clean.split(/\s+[-–—]\s+/);
+    const t = {
+      source: 'local',
+      id: f.file,
+      file: f.file,
+      title: parts.length > 1 ? parts.slice(1).join(' - ').trim() : clean,
+      artist: parts.length > 1 ? parts[0].trim() : 'This PC',
+      thumb: '', dur: ''
+    };
+    if (addTrackIfNew(t)) n++;
+  }
+  save(); renderAll();
+  $('#localNote').textContent = res.skipped.length
+    ? `Added ${n}. Skipped ${res.skipped.length} unsupported file${res.skipped.length === 1 ? '' : 's'}.`
+    : `Added ${n} file${n === 1 ? '' : 's'}.`;
+  toast(n ? `Added ${n} file${n === 1 ? '' : 's'}` : 'Those files are already in your library');
+}
+
+function makeLocalUrl(t) {
+  return `/music/${encodeURIComponent(t.file || t.id.replace(/^local:/, ''))}`;
+}
+
+$('#pickFiles').onclick = addLocalFiles;
+$('#openFolder').onclick = () => window.pulse?.openFolder?.();
+$('#pickFiles2').onclick = addLocalFiles;
+
+function removeLocalTrack(t) {
+  if (!t) return;
+  if (!confirm(`Remove “${t.title}” from the app?\n\nThe copied file is deleted. Your original file is not touched.`)) return;
+  window.pulse?.removeLocal?.(t.file || t.id.replace(/^local:/, ''));
+  state.queue = state.queue.filter(x => !same(x, t));
+  state.liked = state.liked.filter(x => !same(x, t));
+  state.recent = state.recent.filter(x => !same(x, t));
+  state.playlists.forEach(p => p.tracks = p.tracks.filter(x => !same(x, t)));
+  save(); renderAll();
+  toast('Removed');
+}
 
 // ---------------- links ----------------
 function parseLink(url) {
@@ -104,7 +161,6 @@ async function importYouTubePlaylist(listId) {
     }
     pageToken = d.nextPageToken || '';
   } while (pageToken && ++guard < 12);
-  // durations in batches of 50
   for (let i = 0; i < out.length; i += 50) {
     const ids = out.slice(i, i + 50).map(t => t.id);
     try {
@@ -130,9 +186,6 @@ async function importSoundCloudSet(setUrl) {
   }));
 }
 
-// Spotify: their API will not hand a third-party app its catalogue, so a public
-// playlist is read through Spotify's own embed page and each track is then
-// matched on YouTube. Works without an account; songs are found by name.
 async function importSpotify(url) {
   const out = [];
   const page = await (await fetch(url)).text();
@@ -201,7 +254,6 @@ async function importFromText(text, intoList) {
   if (added) $('#pasteBox').value = '';
 }
 
-// put a track in a playlist, or the queue when no playlist is chosen
 function place(t, listId) {
   if (!t || !t.id) return false;
   const list = listId ? findList(listId) : null;
@@ -234,7 +286,7 @@ $('#exportQueue').onclick = () => {
   if (!tracks.length) return toast('Nothing to export yet');
   const text = tracks.map(t => t.source === 'youtube'
     ? `https://www.youtube.com/watch?v=${t.id}`
-    : t.id).join('\n');
+    : t.source === 'local' ? `(local file) ${t.file}` : t.id).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
   a.download = `pulse-${name.replace(/[^\w -]/g, '')}.txt`;
@@ -321,6 +373,12 @@ async function doSearch() {
     addToQueue(await enrich(link), true);
     return;
   }
+  if (state.source === 'local') {
+    const hits = localTracks().filter(t => (t.title + ' ' + t.artist).toLowerCase().includes(q.toLowerCase()));
+    state.results = hits;
+    $('#status').textContent = hits.length ? 'Results from this PC' : 'Nothing on this PC matches.';
+    return renderResults();
+  }
   $('#status').textContent = `Searching ${SRC[state.source]}…`;
   try {
     state.results = state.source === 'soundcloud' ? await searchSC(q) : await searchYT(q, state.source === 'ytmusic');
@@ -391,13 +449,14 @@ function splitTitle(t) {
   title = title.replace(/\b(feat|ft|featuring)\.?\s+[^(\[]+/gi, '').replace(/["']/g, '').trim();
   title = title.replace(/\s{2,}/g, ' ').replace(/\s*[-–—]\s*$/, '').trim();
   artist = artist.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').trim();
+  if (artist === 'This PC') artist = '';       // no artist to match on for local files
   return { artist, title };
 }
 
 async function fetchLyrics(t) {
   const { artist, title } = splitTitle(t);
   const url = 'https://lrclib.net/api/search?track_name=' + encodeURIComponent(title) +
-              '&artist_name=' + encodeURIComponent(artist);
+              (artist ? '&artist_name=' + encodeURIComponent(artist) : '');
   const r = await fetch(url);
   if (!r.ok) throw new Error('Lyrics lookup failed');
   const hits = await r.json();
@@ -504,18 +563,19 @@ $('#lyrSearch').addEventListener('keydown', async e => {
 });
 
 // ---------------- rendering ----------------
-const art = (t, cls = '') => t.thumb ? `<img class="${cls}" src="${esc(t.thumb)}" alt="">` : `<div class="${cls} noart">♪</div>`;
+const art = (t, cls = '') => t.thumb ? `<img class="${cls}" src="${esc(t.thumb)}" alt="">` : `<div class="${cls} noart">${isLocal(t) ? '♫' : '♪'}</div>`;
 const isLiked = t => state.liked.some(x => same(x, t));
 
 function renderList(ul, list, mode) {
   if (!list.length) { ul.innerHTML = `<li class="empty">Nothing here yet.</li>`; return; }
   ul.innerHTML = list.map((t, i) => `
-    <li class="track${mode === 'queue' && i === state.current ? ' playing' : ''}${isFailed(t) ? ' failed' : ''}" data-i="${i}">
+    <li class="track${mode === 'queue' && i === state.current ? ' playing' : ''}${isFailed(t) ? ' failed' : ''}${isLocal(t) ? ' local' : ''}" data-i="${i}">
       <span class="index">${i + 1}</span>${art(t)}
       <div class="meta"><span class="title">${esc(t.title)}</span><span class="sub">${esc(t.artist)} · ${SRC[t.source]}${isFailed(t) ? " · won't play in apps" : ''}</span></div>
       <div class="acts">
         <button data-a="like" title="Like">${isLiked(t) ? '♥' : '♡'}</button>
         <button data-a="topl" title="Add to a playlist">＋</button>
+        ${isLocal(t) ? '<button data-a="delf" title="Remove from app">🗑</button>' : ''}
         ${mode === 'queue' ? '<button data-a="rm" title="Remove">✕</button>' : '<button data-a="add" title="Add to queue">↑</button>'}
       </div>
       <span class="dur">${esc(t.dur || '')}</span>
@@ -526,6 +586,7 @@ function renderList(ul, list, mode) {
       const a = e.target.closest('button')?.dataset.a;
       if (a === 'like') return toggleLike(t);
       if (a === 'topl') return addTrackToPlaylist(t);
+      if (a === 'delf') return removeLocalTrack(t);
       if (a === 'rm') return removeAt(i);
       if (a === 'add') return addToQueue(t, false);
       mode === 'queue' ? play(i) : addToQueue(t, true);
@@ -599,10 +660,13 @@ function renderAll() {
   renderList($('#queueList'), state.queue, 'queue');
   renderList($('#likedList'), state.liked, 'liked');
   renderList($('#recentList'), state.recent, 'recent');
+  renderList($('#localList'), localTracks(), 'local');
   renderPlaylists();
   $('#bQueue').textContent = state.queue.length;
   $('#bLiked').textContent = state.liked.length;
   $('#bLists').textContent = state.playlists.length;
+  $('#bLocal').textContent = localTracks().length;
+  $('#localCount').textContent = localTracks().length;
   const liked = isLiked(cur());
   $('#barLike').textContent = $('#npLike').textContent = liked ? '♥' : '♡';
   $('#shuffleBtn').classList.toggle('on', state.shuffle);
@@ -622,6 +686,8 @@ function addToQueue(t, playNow) {
   if (playNow) play(i); else { toast('Added to queue'); renderAll(); }
 }
 function removeAt(i) {
+  const gone = state.queue[i];
+  if (gone && isLocal(gone)) return removeLocalTrack(gone);
   state.queue.splice(i, 1);
   if (i < state.current) state.current--;
   else if (i === state.current) { stopAll(); state.current = -1; state.playing = false; updateNow(); updateBtn(); }
@@ -636,6 +702,7 @@ $('#clearQueue').onclick = () => { stopAll(); state.queue = []; state.current = 
 
 // ---------------- playback ----------------
 let yt = null, ytReady = false, sc = null, scPos = 0, scDur = 0;
+let localEl = null;
 let pending = null, skipGuard = 0, lastEndedAt = 0;
 
 window.onYouTubeIframeAPIReady = () => {
@@ -661,8 +728,6 @@ window.onYouTubeIframeAPIReady = () => {
   });
 };
 
-// If the player has not come up within 10s of app start, say so instead of
-// leaving a play button that does nothing.
 setTimeout(() => {
   if (!ytReady) {
     state.playerDead = true;
@@ -684,12 +749,44 @@ const cur = () => state.queue[state.current];
 function stopAll() {
   try { if (ytReady) yt.stopVideo(); } catch {}
   if (sc) { try { sc.pause(); } catch {} sc = null; $('#scFrame').src = 'about:blank'; }
+  if (localEl) { localEl.pause(); localEl.removeAttribute('src'); localEl.load(); }
   $('#artBox').dataset.mode = 'none';
 }
 
 function play(i) {
   if (i < 0 || i >= state.queue.length) return;
   const t = state.queue[i];
+
+  // Local audio plays in the app's own <audio> element.
+  if (isLocal(t)) {
+    stopAll();
+    state.current = i;
+    $('#artBox').dataset.mode = 'local';
+    if (!localEl) {
+      localEl = new Audio();
+      localEl.preload = 'metadata';
+      localEl.addEventListener('ended', ended);
+      localEl.addEventListener('play', () => { state.playing = true; updateBtn(); });
+      localEl.addEventListener('pause', () => { state.playing = false; updateBtn(); });
+      localEl.addEventListener('loadedmetadata', () => { scDur = localEl.duration || 0; });
+      localEl.addEventListener('timeupdate', () => { scPos = localEl.currentTime || 0; });
+      localEl.addEventListener('error', () => {
+        const c = cur();
+        if (c) { const k = keyOf(c); if (!state.failed.includes(k)) state.failed.push(k); }
+        toast('This file could not be played — its format is not supported.', 5000);
+        setTimeout(next, 1200);
+      });
+    }
+    localEl.src = makeLocalUrl(t);
+    localEl.volume = state.volume / 100;
+    localEl.play().catch(() => toast('Could not start that file.'));
+    state.playing = true;
+    state.recent = [{ ...t }, ...state.recent.filter(x => !same(x, t))].slice(0, 50);
+    save(); updateNow(); updateBtn(); renderAll();
+    loadLyrics(t);
+    return;
+  }
+
   if (t.source === 'youtube' && !ytReady) {
     pending = i;
     toast(state.playerDead ? 'The video player still is not loaded. Try restarting the app.' : 'Loading the YouTube player…', 5000);
@@ -720,7 +817,10 @@ function play(i) {
 function toggle() {
   const t = cur();
   if (!t) { if (state.queue.length) play(0); else toast('Add a song first'); return; }
-  if (t.source === 'youtube') {
+  if (isLocal(t)) {
+    if (!localEl) return play(state.current);
+    state.playing ? localEl.pause() : localEl.play().catch(() => {});
+  } else if (t.source === 'youtube') {
     if (!ytReady) { pending = state.current; toast('Loading the YouTube player…'); return; }
     state.playing ? yt.pauseVideo() : yt.playVideo();
   } else if (sc) {
@@ -747,9 +847,21 @@ function ended() {
   if (state.repeat) return play(state.current);
   next();
 }
-function position() { const t = cur(); if (!t) return 0; return t.source === 'youtube' ? (ytReady ? yt.getCurrentTime() || 0 : 0) : scPos; }
-function duration() { const t = cur(); if (!t) return 0; return t.source === 'youtube' ? (ytReady ? yt.getDuration() || 0 : 0) : scDur; }
-function seek(s) { const t = cur(); if (!t) return; if (t.source === 'youtube') yt.seekTo(s, true); else if (sc) sc.seekTo(s * 1000); }
+function position() {
+  const t = cur(); if (!t) return 0;
+  if (isLocal(t)) return localEl ? localEl.currentTime || 0 : 0;
+  return t.source === 'youtube' ? (ytReady ? yt.getCurrentTime() || 0 : 0) : scPos;
+}
+function duration() {
+  const t = cur(); if (!t) return 0;
+  if (isLocal(t)) return localEl ? localEl.duration || 0 : 0;
+  return t.source === 'youtube' ? (ytReady ? yt.getDuration() || 0 : 0) : scDur;
+}
+function seek(s) {
+  const t = cur(); if (!t) return;
+  if (isLocal(t)) { if (localEl && isFinite(s)) localEl.currentTime = s; return; }
+  if (t.source === 'youtube') yt.seekTo(s, true); else if (sc) sc.seekTo(s * 1000);
+}
 
 setInterval(() => {
   const p = position(), d = duration();
@@ -773,7 +885,7 @@ function updateNow() {
   $('#npArtist').textContent = $('#barArtist').textContent = t ? t.artist : '';
   const ba = $('#barArt');
   ba.style.backgroundImage = t && t.thumb ? `url("${t.thumb}")` : '';
-  ba.textContent = t && t.thumb ? '' : '♪';
+  ba.textContent = t && t.thumb ? '' : (isLocal(t) ? '♫' : '♪');
   document.title = t ? `${t.title} – Pulse` : 'Pulse';
 }
 
@@ -801,6 +913,7 @@ vol.value = state.volume;
 vol.oninput = () => {
   state.volume = +vol.value; save();
   try { if (ytReady) yt.setVolume(state.volume); } catch {}
+  if (localEl) localEl.volume = state.volume / 100;
   if (sc) sc.setVolume(state.volume);
 };
 
