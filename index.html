@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pulse</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://w.soundcloud.com/player/api.js"></script>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">● Pulse</div>
+    <div class="search">
+      <span class="search-icon">⌕</span>
+      <input id="q" placeholder="Search, or paste a YouTube / YouTube Music / SoundCloud link and press Enter" autocomplete="off">
+      <button id="clearQ" title="Clear">✕</button>
+    </div>
+    <div class="sources">
+      <button data-src="youtube">▶ YouTube</button>
+      <button data-src="ytmusic">◉ YouTube Music</button>
+      <button data-src="soundcloud">☁ SoundCloud</button>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <button data-view="search" class="active" title="Search">⌕</button>
+    <button data-view="liked" title="Liked songs">♡<span class="badge" id="bLiked">0</span></button>
+    <button data-view="recent" title="Recently played">◷</button>
+    <button data-view="queue" title="Queue">≡<span class="badge" id="bQueue">0</span></button>
+    <hr>
+    <button data-view="settings" title="Customise">⚙</button>
+  </nav>
+
+  <main class="content">
+    <section id="view-search" class="view active">
+      <p id="status" class="status">Search above, or paste a link and press Enter.</p>
+      <h2 id="topHead">Top results</h2>
+      <div id="tiles" class="tiles"></div>
+      <ul id="results" class="list"></ul>
+    </section>
+
+    <section id="view-liked" class="view">
+      <h2>Liked songs</h2>
+      <ul id="likedList" class="list"></ul>
+    </section>
+
+    <section id="view-recent" class="view">
+      <h2>Recently played</h2>
+      <ul id="recentList" class="list"></ul>
+    </section>
+
+    <section id="view-queue" class="view">
+      <div class="head-row"><h2>Queue</h2><button id="clearQueue" class="ghost">Clear queue</button></div>
+      <ul id="queueList" class="list"></ul>
+    </section>
+
+    <section id="view-settings" class="view settings">
+      <h2>Customise</h2>
+
+      <h4>Presets</h4>
+      <div id="presets" class="presets"></div>
+
+      <h4>Colours</h4>
+      <label>Accent <input type="color" data-var="--accent"></label>
+      <label>Text on accent <input type="color" data-var="--accent-text"></label>
+      <label>Background <input type="color" data-var="--bg"></label>
+      <label>Panels <input type="color" data-var="--panel"></label>
+      <label>Hover &amp; tiles <input type="color" data-var="--panel-2"></label>
+      <label>Text <input type="color" data-var="--text"></label>
+      <label>Secondary text <input type="color" data-var="--muted"></label>
+
+      <h4>Shape &amp; type</h4>
+      <label>Corner roundness <input type="range" min="0" max="32" data-var="--radius" data-unit="px"></label>
+      <label>Spacing <input type="range" min="6" max="28" data-var="--gap" data-unit="px"></label>
+      <label>Font
+        <select data-var="--font">
+          <option value="system-ui, 'Segoe UI', sans-serif">System</option>
+          <option value="'Segoe UI', sans-serif">Segoe UI</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Trebuchet MS', sans-serif">Trebuchet</option>
+          <option value="'Courier New', monospace">Monospace</option>
+        </select>
+      </label>
+
+      <h4>Layout</h4>
+      <label>Show now-playing panel <input type="checkbox" id="optNow"></label>
+      <label>Compact song rows <input type="checkbox" id="optCompact"></label>
+
+      <h4>Search keys (optional)</h4>
+      <label>YouTube API key <input id="ytKey" type="password" placeholder="Paste key"></label>
+      <label>SoundCloud client ID <input id="scKey" type="password" placeholder="Paste ID"></label>
+      <p class="hint">You only need these for searching. Pasting a link into the search bar always works without any keys. See README for how to get a free YouTube key.</p>
+
+      <div class="btns">
+        <button id="resetTheme" class="ghost">Reset look</button>
+        <button id="resetData" class="ghost danger">Clear all songs &amp; history</button>
+      </div>
+    </section>
+  </main>
+
+  <aside class="now">
+    <div class="now-head">
+      <button id="npLike" title="Like">♡</button>
+      <button id="npQueue" title="Show queue">≡</button>
+      <button id="npFocus" title="Focus mode">⤢</button>
+      <button id="npClose" title="Hide panel">✕</button>
+    </div>
+    <div id="artBox" class="art-box" data-mode="none">
+      <div class="placeholder">♪</div>
+      <div id="ytHolder"><div id="ytPlayer"></div></div>
+      <iframe id="scFrame" allow="autoplay" title="SoundCloud player"></iframe>
+    </div>
+    <h3 id="npTitle">Nothing playing</h3>
+    <p id="npArtist"></p>
+  </aside>
+
+  <footer class="player">
+    <div id="progress" class="progress"><div id="progressFill"></div></div>
+    <div class="p-left">
+      <div id="barArt" class="bar-art">♪</div>
+      <div class="p-meta"><b id="barTitle">Nothing playing</b><small id="barArtist"></small></div>
+      <button id="barLike" class="icon" title="Like">♡</button>
+    </div>
+    <div class="p-center">
+      <button id="shuffleBtn" class="icon" title="Shuffle">⤮</button>
+      <button id="prevBtn" class="icon" title="Previous">⏮</button>
+      <button id="playBtn" title="Play / pause (space)">▶</button>
+      <button id="nextBtn" class="icon" title="Next">⏭</button>
+      <button id="repeatBtn" class="icon" title="Repeat one">↻</button>
+    </div>
+    <div class="p-right">
+      <span class="time"><span id="elapsed">0:00</span> / <span id="total">0:00</span></span>
+      <button id="queueBtn" class="icon" title="Queue">≡</button>
+      <span class="vol-icon">🔊</span>
+      <input id="vol" type="range" min="0" max="100">
+    </div>
+  </footer>
+
+  <div id="toast"></div>
+
+  <script src="renderer.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
